@@ -13,8 +13,8 @@ RUN git clone https://github.com/dimacv/deployment-ML-streamlit.git
 
 WORKDIR /app/deployment-ML-streamlit
 
-RUN python -m pip install --upgrade pip  && \
-    pip3 install -r requirements.txt
+RUN python -m pip install --upgrade pip  
+RUN pip3 install -r requirements.txt
 
 EXPOSE 8501
 
