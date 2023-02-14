@@ -1,6 +1,7 @@
 pandas
-scikit-learn
-pandas
 numpy
+scikit-learn
 streamlit
+dill
+
 

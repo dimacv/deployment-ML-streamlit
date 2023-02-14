@@ -3,15 +3,81 @@ import pandas as pd
 import numpy as np
 # импортируем библиотеку streamlit
 import streamlit as st
-# импортируем модуль pickle
-import pickle
+# импортируем модуль dill
+import dill
 
-# загрузим модель стандартизации
-with open('deployment_standardscaler.pkl', 'rb') as f:
-    standardscaler = pickle.load(f)
-# загрузим модель logreg
-with open('deployment_logreg.pkl', 'rb') as f:
-    logreg = pickle.load(f)
+# функция предварительной подготовки
+def preprocessing(df):
+
+    # значения переменной age меньше 18 заменяем
+    # минимально допустимым значением возраста
+    df['age'] = np.where(df['age'] < 18, 18, df['age'])
+
+    # создаем переменную Ratio - отношение количества
+    # просрочек 90+ к общему количеству просрочек
+    sum_of_delinq = (df['NumberOfTimes90DaysLate'] +
+                     df['NumberOfTime30-59DaysPastDueNotWorse'] +
+                     df['NumberOfTime60-89DaysPastDueNotWorse'])
+
+    cond = (df['NumberOfTimes90DaysLate'] == 0) | (sum_of_delinq == 0)
+    df['Ratio'] = np.where(
+        cond, 0, df['NumberOfTimes90DaysLate'] / sum_of_delinq)
+
+    # создаем индикатор нулевых значений переменной
+    # NumberOfOpenCreditLinesAndLoans
+    df['NumberOfOpenCreditLinesAndLoans_is_0'] = np.where(
+        df['NumberOfOpenCreditLinesAndLoans'] == 0, 'T', 'F')
+
+    # создаем индикатор нулевых значений переменной
+    # NumberRealEstateLoansOrLines
+    df['NumberRealEstateLoansOrLines_is_0'] = np.where(
+        df['NumberRealEstateLoansOrLines'] == 0, 'T', 'F')
+
+    # создаем индикатор нулевых значений переменной
+    # RevolvingUtilizationOfUnsecuredLines
+    df['RevolvingUtilizationOfUnsecuredLines_is_0'] = np.where(
+        df['RevolvingUtilizationOfUnsecuredLines'] == 0, 'T', 'F')
+
+    # преобразовываем переменные в категориальные, применив
+    # биннинг и перевод в единый строковый формат
+    for col in ['NumberOfTime30-59DaysPastDueNotWorse',
+                'NumberOfTime60-89DaysPastDueNotWorse',
+                'NumberOfTimes90DaysLate']:
+        df.loc[df[col] > 3, col] = 4
+        df[col] = df[col].apply(lambda x: f"cat_{x}")
+
+    # создаем список списков - список 2-факторных взаимодействий
+    lst = [
+        ['NumberOfDependents',
+         'NumberOfTime30-59DaysPastDueNotWorse'],
+        ['NumberOfTime60-89DaysPastDueNotWorse',
+         'NumberOfTimes90DaysLate'],
+        ['NumberOfTime30-59DaysPastDueNotWorse',
+         'NumberOfTime60-89DaysPastDueNotWorse'],
+        ['NumberRealEstateLoansOrLines_is_0',
+         'NumberOfTimes90DaysLate'],
+        ['NumberOfOpenCreditLinesAndLoans_is_0',
+         'NumberOfTimes90DaysLate']
+    ]
+
+    # создаем взаимодействия
+    for i in lst:
+        f1 = i[0]
+        f2 = i[1]
+        df[f1 + ' + ' + f2 + '_interact'] = (df[f1].astype(str) + ' + '
+                                             + df[f2].astype(str))
+
+    # укрупняем редкие категории
+    interact_columns = df.columns[df.columns.str.contains('interact')]
+    for col in interact_columns:
+        df.loc[df[col].value_counts()[df[col]].values < 55, col] = 'Other'
+
+    return df
+
+
+# загрузим сохраненную ранее модель
+with open('pipeline_for_deployment.pkl', 'rb') as f:
+    pipe = dill.load(f)
 
 ###  Функция запуска web интерфейса
 def run():
@@ -26,50 +92,71 @@ def run():
     "В каком режиме вы хотели сделать прогноз, Онлайн(Online) \nили загрузкой файла данных(Batch)?",
     ("Online", "Batch"))
 
-    st.sidebar.info('Прогнозирования отклика на предложение автостраховки с использованием логистической регрессии')
+    st.sidebar.info('Прогнозирования просрочки с использованием метода логистической регрессии.')
 
-    st.title("Прогнозирования отклика на предложение автостраховки:")
+    st.title("Прогнозирования просрочки:")
 
     if add_selectbox == 'Online':
-        CusLV = st.number_input('Пожизненная ценность клиента [Customer Lifetime Value]')
-        Income = st.number_input('Доход клиента [Income]', step=1)
-        MonPAuto = st.number_input('Размер ежемесячной автостраховки [Monthly Premium Auto]', step=1)
-        MonSLClaim = \
-            st.number_input('Количество месяцев со дня подачи последнего страхового требования [Months Since Last Claim]', step=1)
-        MonSPInception = \
-            st.number_input('Количество месяцев с момента заключения страхового договора [Months Since Policy Inception]', step=1)
-        NumComplaints = st.number_input('Количество открытых страховых обращений [Number of Open Complaints]', step=1)
-        NumPolicies = st.number_input('Количество полисов [Number of Policies]', step=1)
-
+        RevolvingUtilizationOfUnsecuredLines = \
+            st.number_input('Утилизация [RevolvingUtilizationOfUnsecuredLines]')
+        age = st.number_input('Возраст клиента [age]', step=1)
+        NumberOfTime30_59DaysPastDueNotWorse = \
+            st.number_input('Количество просрочек 30-59 дней по данным БКИ [NumberOfTime30-59DaysPastDueNotWorse]',
+                            step=1)
+        DebtRatio = \
+            st.number_input('Соотношение долга к доходу [DebtRatio]')
+        MonthlyIncome = \
+            st.number_input('Ежемесячный заработок [MonthlyIncome]')
+        NumberOfOpenCreditLinesAndLoans = \
+            st.number_input('Количество кредитов [NumberOfOpenCreditLinesAndLoans]', step=1)
+        NumberOfTimes90DaysLate = \
+            st.number_input('Количество просрочек 90+ по данным БКИ [NumberOfTimes90DaysLate]', step=1)
+        NumberRealEstateLoansOrLines = \
+            st.number_input('Количество ипотечных кредитов [NumberRealEstateLoansOrLines]', step=1)
+        NumberOfTime60_89DaysPastDueNotWorse = \
+            st.number_input('Количество просрочек 60-89 дней по данным БКИ [NumberOfTime60-89DaysPastDueNotWorse]', step=1)
+        NumberOfDependents = st.number_input('Количество иждивенцев [NumberOfDependents]')
         output = ""
 
-        input_dict = {'Lifetime Value': CusLV,
-                      'Income': Income,
-                      'Monthly Premium Auto': MonPAuto,
-                      'Months Since Last Claim': MonSLClaim,
-                      'Months Since Policy Inception': MonSPInception,
-                      'Number of Open Complaints': NumComplaints,
-                      'Number of Policies': NumPolicies,
+        input_dict = {'RevolvingUtilizationOfUnsecuredLines': RevolvingUtilizationOfUnsecuredLines,
+                      'age': age,
+                      'NumberOfTime30-59DaysPastDueNotWorse': NumberOfTime30_59DaysPastDueNotWorse,
+                      'DebtRatio': DebtRatio,
+                      'MonthlyIncome': MonthlyIncome,
+                      'NumberOfOpenCreditLinesAndLoans': NumberOfOpenCreditLinesAndLoans,
+                      'NumberOfTimes90DaysLate': NumberOfTimes90DaysLate,
+                      'NumberRealEstateLoansOrLines': NumberRealEstateLoansOrLines,
+                        'NumberOfTime60-89DaysPastDueNotWorse': NumberOfTime60_89DaysPastDueNotWorse,
+                        'NumberOfDependents': NumberOfDependents
                       }
         input_df = pd.DataFrame([input_dict])
 
         if st.button("Predict"):
 
-            input_df_standardscaled = standardscaler.transform(input_df)
-            output = logreg.predict(input_df_standardscaled)
+            # выполняем предварительную обработку новых данных
+            input_df = preprocessing(input_df)
+
+            # вычисляем вероятности для новых данных
+            output = pipe.predict_proba(input_df)[:, 1]
             output = str(output)
 
-        st.success('Прогноз: {}'.format(output))
+        st.success('Вероятность просрочки: {}'.format(output))
 
     if add_selectbox == 'Batch':
 
-        file_upload = st.file_uploader("Загрузите csv-файл с данными для осуществления прогнозов по ним:", type=["csv"])
+        file_upload = st.file_uploader("Загрузите csv-файл с новыми данными для вычисления вероятностей:", type=["csv"])
 
         if file_upload is not None:
-            data = pd.read_csv(file_upload)
-            data_standardscaled = standardscaler.transform(data)
-            predictions = logreg.predict(data_standardscaled)
-            st.write(predictions)
+            newdata = pd.read_csv(file_upload)
+            # выполняем предварительную обработку новых данных
+            newdata = preprocessing(newdata)
+
+            # вычисляем вероятности для новых данных
+            prob = pipe.predict_proba(newdata)[:, 1]
+
+            # Вывод вероятностей на веб странице
+            st.success('Вероятности просрочки для загруженных данных:')
+            st.write(prob)
 
 
 if __name__ == '__main__':
