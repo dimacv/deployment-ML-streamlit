@@ -115,7 +115,7 @@ def run():
             st.number_input('Количество ипотечных кредитов [NumberRealEstateLoansOrLines]', step=1)
         NumberOfTime60_89DaysPastDueNotWorse = \
             st.number_input('Количество просрочек 60-89 дней по данным БКИ [NumberOfTime60-89DaysPastDueNotWorse]', step=1)
-        NumberOfDependents = st.number_input('Количество иждивенцев [NumberOfDependents]')
+        NumberOfDependents = st.number_input('Количество иждивенцев [NumberOfDependents]', step=1)
         output = ""
 
         input_dict = {'RevolvingUtilizationOfUnsecuredLines': RevolvingUtilizationOfUnsecuredLines,
