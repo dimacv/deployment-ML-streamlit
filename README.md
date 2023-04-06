@@ -1,18 +1,22 @@
-# deployment-ML-streamlit
+# Deploying a machine learning model (complex scikit-learn pipeline) using Streamlit.
 
-## Запуск локально: 
+## Run locally:
 
-##### установка зависимостей
-pip3 install -r requirements.txt   
+##### installing dependencies
+``` pip3 install -r requirements.txt ```   
 
-##### Собственно запуск  
-streamlit run app.py --server.port=8501 --server.address=0.0.0.0    
+##### Actually launch  
+``` streamlit run app.py --server.port=8501 --server.address=0.0.0.0 ```    
    
 ------------------------------------------------------------------  
 
-### Сборка докера:
-docker build -t streamlit .  
+## Run in docker:
+
+### Docker build:
+
+``` docker build -t streamlit . ```  
   
-### Запуск контейнера: 
-docker run -p 8501:8501 --name streamlit streamlit 
+### Starting a named container in daemon mode on port 8501 :
+
+``` docker run -rm -p 8501:8501 --name streamlit -d streamlit ``` 
 
